@@ -51,6 +51,12 @@ pub enum OnchainError {
 
     #[error("Onchain error - failed to get liquidity: {0}")]
     FailedToGetLiquidity(String),
+
+    #[error("Onchain error - failed to call multicall: {0}")]
+    FailedToCallMulticall(String),
+
+    #[error("Onchain error - failed decode bitmap: {0}")]
+    FailedToDecodeBitmap(String),
 }
 
 #[derive(Debug, Error)]

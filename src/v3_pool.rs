@@ -4,6 +4,7 @@ use alloy::providers::Provider;
 use alloy::sol;
 use alloy_primitives::{Address, BlockNumber, U160, U256};
 use futures::try_join;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 sol! {
@@ -31,6 +32,21 @@ sol! {
     }
 }
 
+sol! {
+    struct Call {
+        address target;
+        bytes callData;
+    }
+
+    #[sol(rpc)]
+    interface IMulticall {
+        function aggregate(Call[] calls)
+            external
+            view
+            returns (uint256 blockNumber, bytes[] returnData);
+    }
+}
+
 pub type OnchainProvider<P> = Arc<P>;
 
 pub fn address_to_u160(address: Address) -> U160 {
@@ -54,6 +70,7 @@ struct V3Pool<P: Provider> {
     pub liquidity: u128,
     pub tick_spacing: i32,
     pub contract: IV3Pool::IV3PoolInstance<OnchainProvider<P>>,
+    pub multicall: IMulticall::IMulticallInstance<OnchainProvider<P>>,
     provider: OnchainProvider<P>,
 }
 
@@ -67,6 +84,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
     ) -> Self {
         let (token0, token1) = sort_tokens(token0, token1);
         let contract = IV3Pool::IV3PoolInstance::new(pool_address, provider.clone());
+        let multicall = IMulticall::IMulticallInstance::new(pool_address, provider.clone());
         Self {
             pool_address,
             token0,
@@ -76,6 +94,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
             liquidity: 0u128,
             tick_spacing: 0i32,
             contract,
+            multicall,
             provider,
         }
     }
@@ -173,7 +192,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         self.update_tick_spacing(None).await
     }
 
-    pub async fn update_all_latest(&mut self) -> Result<(), OnchainError> {
+    pub async fn refresh_latest(&mut self) -> Result<(), OnchainError> {
         let (liq, slot0, spacing) = try_join!(
             self.fetch_liquidity(None),
             self.fetch_slot0(None),
@@ -187,10 +206,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(())
     }
 
-    pub async fn update_all(
-        &mut self,
-        block_number: Option<BlockNumber>,
-    ) -> Result<(), OnchainError> {
+    pub async fn refresh(&mut self, block_number: Option<BlockNumber>) -> Result<(), OnchainError> {
         let (liq, slot0, spacing) = try_join!(
             self.fetch_liquidity(block_number),
             self.fetch_slot0(block_number),
@@ -202,5 +218,53 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         self.tick_spacing = spacing;
 
         Ok(())
+    }
+
+    pub fn generate_search_range() -> Vec<i16> {
+        (-100..=100).collect()
+    }
+
+    pub async fn fetch_batch_bitmaps(
+        &self,
+        word_positions: &[i16],
+        block_number: Option<BlockNumber>,
+    ) -> Result<FxHashMap<i16, U256>, OnchainError> {
+        let mut calls: Vec<Call> = Vec::new();
+
+        for wp in word_positions {
+            let call_data = self.contract.tickBitmap(*wp).calldata().to_owned();
+            calls.push(Call {
+                target: self.pool_address,
+                callData: call_data,
+            });
+        }
+
+        let mut agg = self.multicall.aggregate(calls);
+
+        if let Some(bn) = block_number {
+            agg = agg.block(bn.into());
+        }
+        let return_data = agg
+            .call()
+            .await
+            .map_err(|e| OnchainError::FailedToCallMulticall(e.to_string()))?;
+
+        let mut result: FxHashMap<i16, U256> = FxHashMap::default();
+
+        for (i, raw) in return_data.returnData.into_iter().enumerate() {
+            let decoded = self
+                .contract
+                .tickBitmap(word_positions[i])
+                .decode_output(raw)
+                .map_err(|e| OnchainError::FailedToDecodeBitmap(e.to_string()))?;
+
+            let bitmap = U256::from(decoded);
+
+            if !bitmap.is_zero() {
+                result.insert(word_positions[i], bitmap);
+            }
+        }
+
+        Ok(result)
     }
 }
