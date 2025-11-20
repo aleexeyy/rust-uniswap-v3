@@ -4,7 +4,7 @@ use crate::tick_math::{MAX_TICK, MIN_TICK};
 use alloy::providers::Provider;
 use alloy::sol;
 use alloy_primitives::aliases::I24;
-use alloy_primitives::{Address, BlockNumber, I256, U160, U256};
+use alloy_primitives::{Address, BlockNumber, U160, U256};
 use futures::try_join;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -440,11 +440,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
     }
 
     pub fn get_liquidity_net(&self, tick: &i32) -> Option<i128> {
-        if let Some(tick_info) = self.ticks.get(tick) {
-            Some(tick_info.liquidity_net)
-        } else {
-            None
-        }
+        self.ticks.get(tick).map(|tick_info| tick_info.liquidity_net)
     }
 }
 

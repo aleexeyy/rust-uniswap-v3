@@ -104,10 +104,10 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
     pub fn swap(&self, params: SwapParams) -> Result<SwapResult, Error> {
         let amount_specified = params.amount_specified;
         if amount_specified.is_zero() {
-            return Err(Error::SwapError(SwapError::AmountSpecifiedIsZero).into());
+            return Err(Error::SwapError(SwapError::AmountSpecifiedIsZero));
         }
         if self.liquidity == 0 {
-            return Err(Error::SwapError(SwapError::LiquidityIsZero).into());
+            return Err(Error::SwapError(SwapError::LiquidityIsZero));
         }
 
         let zero_for_one = params.zero_for_one;
@@ -116,14 +116,12 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
             if (sqrt_price_limit_x96 >= self.slot0.sqrt_price_x96)
                 || (sqrt_price_limit_x96 <= MIN_SQRT_RATIO)
             {
-                return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds).into());
+                return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds));
             }
-        } else {
-            if (sqrt_price_limit_x96 <= self.slot0.sqrt_price_x96)
-                || (sqrt_price_limit_x96 >= MAX_SQRT_RATIO)
-            {
-                return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds).into());
-            }
+        } else if (sqrt_price_limit_x96 <= self.slot0.sqrt_price_x96)
+            || (sqrt_price_limit_x96 >= MAX_SQRT_RATIO)
+        {
+            return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds));
         }
 
         let exact_input: bool = amount_specified.is_positive();
@@ -172,12 +170,10 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
                     } else {
                         step.sqrt_price_next_x96
                     }
+                } else if step.sqrt_price_next_x96 > sqrt_price_limit_x96 {
+                    sqrt_price_limit_x96
                 } else {
-                    if step.sqrt_price_next_x96 > sqrt_price_limit_x96 {
-                        sqrt_price_limit_x96
-                    } else {
-                        step.sqrt_price_next_x96
-                    }
+                    step.sqrt_price_next_x96
                 },
                 state.liquidity,
                 state.amount_specified_remaining,
@@ -213,21 +209,19 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
                                     .checked_add((-liquidity_net) as u128)
                                     .ok_or(SwapError::LiquidityIsZero)?;
                             }
+                        } else if liquidity_net >= 0 {
+                            state.liquidity = state
+                                .liquidity
+                                .checked_add(liquidity_net as u128)
+                                .ok_or(SwapError::LiquidityIsZero)?;
                         } else {
-                            if liquidity_net >= 0 {
-                                state.liquidity = state
-                                    .liquidity
-                                    .checked_add(liquidity_net as u128)
-                                    .ok_or(SwapError::LiquidityIsZero)?;
-                            } else {
-                                state.liquidity = state
-                                    .liquidity
-                                    .checked_sub((-liquidity_net) as u128)
-                                    .ok_or(SwapError::LiquidityIsZero)?;
-                            }
+                            state.liquidity = state
+                                .liquidity
+                                .checked_sub((-liquidity_net) as u128)
+                                .ok_or(SwapError::LiquidityIsZero)?;
                         }
                     } else {
-                        return Err(Error::SwapError(SwapError::LiquidityIsZero).into());
+                        return Err(Error::SwapError(SwapError::LiquidityIsZero));
                     }
 
                     // TODO: Need to think, if I need to write something there
