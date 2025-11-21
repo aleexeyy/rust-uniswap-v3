@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
 use alloy_primitives::{I256, U256};
-use criterion::{BenchmarkId, Criterion, Throughput, black_box};
-use uniswap_v3_math::math::{
+use clmm_swap_math::math::{
     bit_math, math_helpers, sqrt_price_math, swap_math, tick_bitmap, tick_math,
 };
-use uniswap_v3_math::{FastMap, RESOLUTION};
+use clmm_swap_math::{FastMap, RESOLUTION};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box};
 
 pub fn bench_tick_math(c: &mut Criterion) {
     let mut group = c.benchmark_group("tick_math");
