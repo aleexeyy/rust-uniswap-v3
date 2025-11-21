@@ -27,8 +27,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: cargo clippy (default features)
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -64,4 +64,3 @@ jobs:
           else
             cargo test --all-targets --features "${{ matrix.features }}"
           fi
-
